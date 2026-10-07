@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Structural Analysis Assistant</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#eef2f7;color:#172033}
+header{background:linear-gradient(135deg,#17324d,#1769aa);color:#fff;padding:28px 20px;text-align:center}
+header h1{margin:0 0 8px;font-size:31px}
+header p{margin:0;opacity:.9}
+.container{max-width:1250px;margin:24px auto;padding:0 18px}
+.card{background:#fff;border-radius:14px;padding:22px;margin-bottom:20px;box-shadow:0 5px 20px rgba(0,0,0,.07)}
+h2{margin-top:0;color:#0f2747} h3{color:#1769aa}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:15px}
+label{display:block;font-weight:bold;margin-bottom:6px;color:#344054}
+input,select{width:100%;padding:10px;border:1px solid #ccd4df;border-radius:8px;font-size:15px;background:#fff}
+button{border:0;border-radius:8px;padding:11px 16px;font-weight:bold;cursor:pointer;margin-top:10px}
+.primary{background:#1769aa;color:#fff}.primary:hover{background:#0f568e}
+.secondary{background:#e8eef5;color:#17324d}.danger{background:#fee2e2;color:#b42318}
+.success{background:#dcfce7;color:#166534}.warning{background:#fef3c7;color:#92400e}.error{background:#fee2e2;color:#991b1b}
+.status{padding:14px;border-radius:9px;margin-top:15px;font-weight:bold}
+.hidden{display:none}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+.tab{padding:14px;border-radius:10px;border:1px solid #ccd4df;background:#f7f9fc;text-align:center;font-weight:bold}
+.tab.active{background:#1769aa;color:#fff}
+.load-row{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;padding:12px;background:#f7f9fc;border-radius:10px;margin-bottom:10px}
+.result-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:14px}
+.result-box{background:#f4f8fc;border-left:5px solid #1769aa;padding:15px;border-radius:8px}
+.result-box .label{font-size:13px;color:#667085}.result-box .value{font-size:22px;font-weight:bold;margin-top:4px}
+.step{border:1px solid #d9e0e8;border-radius:10px;margin:12px 0;padding:16px;background:#fbfcfe}
+.step h3{margin-top:0}
+.equation{font-family:Georgia,serif;font-size:18px;background:#f5f7fa;border-radius:8px;padding:12px;margin:10px 0}
+.note{background:#fff8e6;border-left:5px solid #f59e0b;padding:15px;border-radius:7px;line-height:1.5}
+canvas{width:100%;height:330px;border:1px solid #d9e0e8;border-radius:10px;background:#fff}
+.beam-canvas{height:280px}
+table{width:100%;border-collapse:collapse;margin-top:10px}
+th,td{border-bottom:1px solid #e4e7ec;padding:9px;text-align:right}
+th{background:#f2f4f7;color:#344054}th:first-child,td:first-child{text-align:left}
+.badge{display:inline-block;padding:5px 9px;border-radius:20px;font-size:12px;font-weight:bold}
+.badge.green{background:#dcfce7;color:#166534}.badge.yellow{background:#fef3c7;color:#92400e}.badge.red{background:#fee2e2;color:#991b1b}
+.small{font-size:13px;color:#667085}
+footer{text-align:center;padding:25px;color:#667085;font-size:13px}
+@media(max-width:700px){.load-row{grid-template-columns:1fr}.tabs{grid-template-columns:1fr}}
+</style>
+</head>
+
+<body>
+<header>
+  <h1>Structural Analysis Assistant</h1>
+  <p>Structural Determinacy • Reactions • Internal Forces • Shear & Bending-Moment Diagrams</p>
+</header>
+
+<div class="container">
+
+  <div class="card">
+    <h2>1. Define the Structural System</h2>
+    <div class="grid">
+      <div>
+        <label>Analysis Type</label>
+        <select id="analysisType" onchange="updateSystemInputs()">
+          <option value="beam">Single Beam / Member</option>
+          <option value="frame">Planar Rigid Frame / General System</option>
+        </select>
+      </div>
+      <div>
+        <label>Supported Span Length</label>
+        <input id="beamLength" type="number" min="0.001" step="0.1" value="20">
+      </div>
+      <div>
+        <label>Left Overhang</label>
+        <input id="leftOverhang" type="number" min="0" step="0.1" value="0">
+      </div>
+      <div>
+        <label>Right Overhang</label>
+        <input id="rightOverhang" type="number" min="0" step="0.1" value="0">
+      </div>
+      <div>
+        <label>Force Unit</label>
+        <input id="forceUnit" value="kN">
+      </div>
+      <div>
+        <label>Length Unit</label>
+        <input id="lengthUnit" value="m">
+      </div>
+    </div>
+
+    <div id="beamSupportInputs" style="margin-top:18px">
+      <h3>Supports</h3>
+      <div class="grid">
+        <div>
+          <label>Left Support</label>
+          <select id="leftSupport">
+            <option value="pin">Pin</option>
+            <option value="hinge">Hinge</option>
+            <option value="fixed">Fixed</option>
+            <option value="roller">Roller</option>
+          </select>
+        </div>
+        <div>
+          <label>Right Support</label>
+          <select id="rightSupport">
+            <option value="roller">Roller</option>
+            <option value="pin">Pin</option>
+            <option value="hinge">Hinge</option>
+            <option value="fixed">Fixed</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        <h3>Intermediate Supports</h3>
+        <p class="small">Add intermediate supports between A and B. Choose Pin, Roller, or Hinge and enter each support location measured from the physical left end of the beam.</p>
+        <div id="intermediateSupports"></div>
+        <button class="secondary" type="button" onclick="addIntermediateSupport()">+ Add Intermediate Support</button>
+      </div>
+      <p class="small">Overhangs are measured beyond the end supports. The drawing and determinacy check include them. The detailed solver can calculate a statically determinate pin/hinge-at-A and roller-at-B beam with left and/or right overhangs when no intermediate supports are present; continuous multi-support beams remain analysis-limited.</p>
+    </div>
+
+    <div id="generalCountInputs" class="hidden" style="margin-top:18px">
+      <h3>Structural Count</h3>
+      <div class="grid">
+        <div><label>Number of Reactions, R</label><input id="reactionCount" type="number" min="0" step="1" value="3"></div>
+        <div><label>Number of Members / Beams, m</label><input id="memberCount" type="number" min="0" step="1" value="1"></div>
+        <div><label>Number of Joints, j</label><input id="jointCount" type="number" min="0" step="1" value="2"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2. Loads</h2>
+    <div id="pointLoads"></div>
+    <button class="secondary" onclick="addPointLoad()">+ Add Point Load</button>
+
+    <div id="udlLoads" style="margin-top:14px"></div>
+    <button class="secondary" onclick="addUDL()">+ Add Distributed Load</button>
+
+    <div id="momentLoads" style="margin-top:14px"></div>
+    <button class="secondary" onclick="addMomentLoad()">+ Add Applied Moment</button>
+
+    <div id="axialLoads" style="margin-top:14px"></div>
+    <button class="secondary" onclick="addAxialLoad()">+ Add Axial Load</button>
+  </div>
+
+  <div class="card">
+    <h2>3. Verify Your Input</h2>
+    <p>The structural drawing updates from your inputs before the analysis is performed. Use it to confirm that the problem has been entered correctly.</p>
+    <canvas id="beamCanvas" class="beam-canvas"></canvas>
+    <div id="drawingStatus" class="status warning">Review the drawing before continuing.</div>
+    <button class="primary" style="width:100%;font-size:17px" onclick="confirmStructure()">✓ Confirm Structure & Continue</button>
+    <button class="secondary" style="width:100%" onclick="loadExample()">Load Example Problem</button>
+  </div>
+
+  <div id="analysisArea" class="hidden">
+    <div class="tabs">
+      <button id="guidedTab" class="tab active" onclick="showMode('guided')">🔎 Guided Analysis</button>
+      <button id="resultsTab" class="tab" onclick="showMode('results')">📊 Results & Diagrams</button>
+    </div>
+
+    <section id="guidedMode">
+      <div class="card">
+        <h2>Guided Analysis</h2>
+        <div id="determinacyStep"></div>
+        <div id="reactionStep"></div>
+        <div id="internalStep"></div>
+        <div id="verificationStep"></div>
+      </div>
+    </section>
+
+    <section id="resultsMode" class="hidden">
+      <div class="card">
+        <h2>Results</h2>
+        <div id="resultBoxes" class="result-grid"></div>
+        <div id="equilibriumStatus"></div>
+      </div>
+
+      <div class="card">
+        <h2>Shear Force Diagram</h2>
+        <canvas id="shearCanvas"></canvas>
+      </div>
+
+      <div class="card">
+        <h2>Bending Moment Diagram</h2>
+        <canvas id="momentCanvas"></canvas>
+      </div>
+
+      <div class="card">
+        <h2>Important Values</h2>
+        <table>
+          <thead><tr><th>Location</th><th>Shear V</th><th>Moment M</th></tr></thead>
+          <tbody id="valuesTable"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div class="card">
+    <h2>Engineering Verification</h2>
+    <div class="note">
+      <strong>Educational use:</strong> This AI-assisted tool is intended for structural-analysis learning and project work.
+      Engineering results should be independently verified using accepted structural-analysis methods and hand calculations.
+      The tool reports its assumptions and checks rather than treating AI-generated calculations as automatically correct.
+    </div>
+  </div>
+</div>
+
+<footer>Structural Analysis Class Project • AI-Assisted Engineering Tool</footer>
+
+<script>
+let lastAnalysis = null;
+let structureConfirmed = false;
+
+function $(id){return document.getElementById(id)}
+function fmt(v,n=3){return Number(v).toFixed(n)}
+function unitF(){return $("forceUnit").value || "kN"}
+function unitL(){return $("lengthUnit").value || "m"}
+
+let intermediateSupportId=0;
+function addIntermediateSupport(x=10){
+  const row=document.createElement("div");
+  row.className="load-row intermediate-support-row";
+  row.innerHTML=`<div><label>Support Location (${unitL()})</label><input class="intermediate-support-position" type="number" min="0" step="0.1" value="${x}"></div><div><label>Support Type</label><select class="intermediate-support-type"><option value="roller">Roller</option><option value="pin">Pin</option><option value="hinge">Hinge</option></select></div><div><label>Reaction Model</label><input class="intermediate-reaction-model" value="Vertical only" disabled></div><button class="danger" type="button" onclick="this.parentElement.remove(); updateDrawing()">Remove</button>`;
+  row.querySelector(".intermediate-support-type").addEventListener("change",()=>{const t=row.querySelector(".intermediate-support-type").value;row.querySelector(".intermediate-reaction-model").value=t==="roller"?"Vertical only":"Vertical + horizontal";updateDrawing();});
+  row.dataset.supportId=++intermediateSupportId;
+  $("intermediateSupports").appendChild(row); updateDrawing();
+}
+
+function addPointLoad(P=10,x=8){
+  const row=document.createElement("div");
+  row.className="load-row";
+  row.innerHTML=`
+    <div><label>Point Load</label><input class="point-force" type="number" min="0" step="0.1" value="${P}"></div>
+    <div><label>Location</label><input class="point-position" type="number" min="0" step="0.1" value="${x}"></div>
+    <div><label>Direction</label><select class="point-direction"><option value="-1">Downward</option><option value="1">Upward</option></select></div>
+    <button class="danger" onclick="this.parentElement.remove(); updateDrawing()">Remove</button>`;
+  $("pointLoads").appendChild(row); updateDrawing();
+}
+function addUDL(w=1,start=0,end=20){
+  const row=document.createElement("div");
+  row.className="load-row";
+  row.innerHTML=`
+    <div><label>Load Intensity</label><input class="udl-value" type="number" min="0" step="0.1" value="${w}"></div>
+    <div><label>Start</label><input class="udl-start" type="number" min="0" step="0.1" value="${start}"></div>
+    <div><label>End</label><input class="udl-end" type="number" min="0" step="0.1" value="${end}"></div>
+    <button class="danger" onclick="this.parentElement.remove(); updateDrawing()">Remove</button>`;
+  $("udlLoads").appendChild(row); updateDrawing();
+}
+function addMomentLoad(M=20,x=12){
+  const row=document.createElement("div");
+  row.className="load-row";
+  row.innerHTML=`
+    <div><label>Moment</label><input class="moment-value" type="number" step="0.1" value="${M}"></div>
+    <div><label>Location</label><input class="moment-position" type="number" min="0" step="0.1" value="${x}"></div>
+    <div><label>Direction</label><select class="moment-direction"><option value="1">Counterclockwise</option><option value="-1">Clockwise</option></select></div>
+    <button class="danger" onclick="this.parentElement.remove(); updateDrawing()">Remove</button>`;
+  $("momentLoads").appendChild(row); updateDrawing();
+}
+function addAxialLoad(P=5,x=8,dir=1){
+  const row=document.createElement("div");
+  row.className="load-row";
+  row.innerHTML=`
+    <div><label>Axial Force</label><input class="axial-value" type="number" min="0" step="0.1" value="${P}"></div>
+    <div><label>Location</label><input class="axial-position" type="number" min="0" step="0.1" value="${x}"></div>
+    <div><label>Direction</label><select class="axial-direction"><option value="1">Rightward</option><option value="-1">Leftward</option></select></div>
+    <button class="danger" onclick="this.parentElement.remove(); updateDrawing()">Remove</button>`;
+  $("axialLoads").appendChild(row); updateDrawing();
+}
+
+function updateSystemInputs(){
+  const type=$("analysisType").value;
+  $("generalCountInputs").classList.toggle("hidden",type==="beam");
+  $("beamSupportInputs").classList.toggle("hidden",type!=="beam");
+  updateDrawing();
+}
+
+function getInputs(){
+  const L=Number($("beamLength").value);
+  const leftOverhang=Math.max(0,Number($("leftOverhang")?.value||0));
+  const rightOverhang=Math.max(0,Number($("rightOverhang")?.value||0));
+  const totalL=leftOverhang+L+rightOverhang;
+  const supportA=leftOverhang;
+  const supportB=leftOverhang+L;
+  const pointLoads=[...document.querySelectorAll(".load-row")].map(()=>null); // unused placeholder
+  const P=[...document.querySelectorAll(".point-force")].map((el,i)=>{
+    const row=el.closest(".load-row");
+    return {P:Number(el.value),x:Number(row.querySelector(".point-position").value),dir:Number(row.querySelector(".point-direction").value)};
+  }).filter(a=>a.P>0);
+  const U=[...document.querySelectorAll(".udl-value")].map(el=>{
+    const row=el.closest(".load-row");
+    return {w:Number(el.value),start:Number(row.querySelector(".udl-start").value),end:Number(row.querySelector(".udl-end").value)};
+  }).filter(a=>a.w>0);
+  const C=[...document.querySelectorAll(".moment-value")].map(el=>{
+    const row=el.closest(".load-row");
+    return {M:Number(el.value),x:Number(row.querySelector(".moment-position").value),dir:Number(row.querySelector(".moment-direction").value)};
+  }).filter(a=>a.M!==0);
+  const A=[...document.querySelectorAll(".axial-value")].map(el=>{
+    const row=el.closest(".load-row");
+    return {P:Number(el.value),x:Number(row.querySelector(".axial-position").value),dir:Number(row.querySelector(".axial-direction").value)};
+  }).filter(a=>a.P>0);
+  const intermediateSupports=[...document.querySelectorAll(".intermediate-support-row")].map(row=>({x:Number(row.querySelector(".intermediate-support-position").value),type:row.querySelector(".intermediate-support-type").value}));
+  return {L,span:L,leftOverhang,rightOverhang,totalL,supportA,supportB,pointLoads:P,udls:U,moments:C,axialLoads:A,intermediateSupports,type:$("analysisType").value};
+}
+
+function validate(d){
+  const e=[];
+  if(!Number.isFinite(d.L)||d.L<=0)e.push("Supported span length must be greater than zero.");
+  if(!Number.isFinite(d.leftOverhang)||d.leftOverhang<0)e.push("Left overhang cannot be negative.");
+  if(!Number.isFinite(d.rightOverhang)||d.rightOverhang<0)e.push("Right overhang cannot be negative.");
+  d.pointLoads.forEach((q,i)=>{if(q.x<0||q.x>d.totalL)e.push(`Point load ${i+1} is outside the physical beam.`)});
+  d.udls.forEach((q,i)=>{if(q.start<0||q.end>d.totalL||q.end<=q.start)e.push(`Distributed load ${i+1} must satisfy 0 ≤ start < end ≤ total beam length.`)});
+  d.moments.forEach((q,i)=>{if(q.x<0||q.x>d.totalL)e.push(`Applied moment ${i+1} is outside the physical beam.`)});
+  d.axialLoads.forEach((q,i)=>{if(q.x<0||q.x>d.totalL)e.push(`Axial load ${i+1} is outside the physical beam.`)});
+  d.intermediateSupports.forEach((s,i)=>{if(!Number.isFinite(s.x)||s.x<=d.supportA||s.x>=d.supportB)e.push(`Intermediate support ${i+1} must be strictly between the end supports A and B.`)});
+  const supports=[...d.intermediateSupports].map(s=>s.x).sort((a,b)=>a-b);
+  if(supports.some((x,i)=>i>0&&Math.abs(x-supports[i-1])<1e-8))e.push("Intermediate supports must be at different locations.");
+  return e;
+}
+
+function drawBasicBeam(d){
+  const c=$("beamCanvas"),ctx=c.getContext("2d"),r=c.getBoundingClientRect();
+  const ratio=devicePixelRatio||1;c.width=r.width*ratio;c.height=r.height*ratio;ctx.setTransform(ratio,0,0,ratio,0,0);
+  const W=r.width,H=r.height;ctx.clearRect(0,0,W,H);
+  const left=55,right=W-55,y=H*.52,scale=(right-left)/d.totalL;
+  const ax=left+d.supportA*scale,bx=left+d.supportB*scale;
+  ctx.strokeStyle="#172033";ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(right,y);ctx.stroke();
+  drawSupport(ctx,ax,y+5,$("leftSupport")?.value||"pin","#1769aa");
+  drawSupport(ctx,bx,y+5,$("rightSupport")?.value||"roller","#1769aa");
+  const mids=d.intermediateSupports||[];
+  mids.forEach((s,i)=>{const pos=s.x;const sx=left+pos*scale;drawSupport(ctx,sx,y+5,s.type,"#0f766e");ctx.fillStyle="#0f766e";ctx.font="bold 12px Arial";ctx.fillText(`S${i+1}`,sx,y+58);ctx.fillStyle="#667085";ctx.font="11px Arial";ctx.fillText(`${s.type.charAt(0).toUpperCase()+s.type.slice(1)} • ${pos} ${unitL()}`,sx,y+73)});
+  ctx.fillStyle="#172033";ctx.font="bold 14px Arial";ctx.textAlign="center";ctx.fillText("A",ax,y+58);ctx.fillText("B",bx,y+58);
+  ctx.font="11px Arial";ctx.fillStyle="#667085";
+  if(d.leftOverhang>0)ctx.fillText(`Left overhang = ${d.leftOverhang} ${unitL()}`,(left+ax)/2,y-18);
+  if(d.rightOverhang>0)ctx.fillText(`Right overhang = ${d.rightOverhang} ${unitL()}`,(bx+right)/2,y-18);
+  d.pointLoads.forEach(q=>{
+    const x=left+q.x*scale; const top=y-72;
+    arrow(ctx,x,top,x,y-8,q.dir<0?"#c2410c":"#15803d");
+    ctx.fillStyle=q.dir<0?"#c2410c":"#15803d";ctx.fillText(`${q.P} ${unitF()}`,x,top-7);
+  });
+  d.udls.forEach(q=>{
+    const x1=left+q.start*scale,x2=left+q.end*scale;
+    ctx.strokeStyle="#7c3aed";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x1,y-42);ctx.lineTo(x2,y-42);ctx.stroke();
+    const n=Math.max(3,Math.floor((x2-x1)/32));
+    for(let i=0;i<=n;i++){const x=x1+(x2-x1)*i/n;arrow(ctx,x,y-38,x,y-8,"#7c3aed")}
+    ctx.fillStyle="#7c3aed";ctx.fillText(`${q.w} ${unitF()}/${unitL()}`,(x1+x2)/2,y-53);
+  });
+  d.moments.forEach(q=>{
+    const x=left+q.x*scale;ctx.strokeStyle="#db2777";ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(x,y-58,18,0,Math.PI*1.55,q.dir<0);ctx.stroke();
+    ctx.fillStyle="#db2777";ctx.font="bold 13px Arial";ctx.fillText(`M=${q.M}`,x,y-83);
+  });
+  // Dimension each consecutive point from the left end of the physical beam.
+  const dimPoints=[0,d.supportA,d.supportB,...(d.intermediateSupports||[]).map(s=>s.x),...d.pointLoads.map(q=>q.x),...d.udls.flatMap(q=>[q.start,q.end]),...d.moments.map(q=>q.x),d.totalL]
+    .filter(x=>Number.isFinite(x)&&x>=0&&x<=d.totalL)
+    .sort((a,b)=>a-b)
+    .filter((x,i,a)=>i===0||Math.abs(x-a[i-1])>1e-8);
+  const dimY=y+88, tick=6;
+  ctx.strokeStyle="#667085";ctx.fillStyle="#667085";ctx.lineWidth=1;ctx.font="11px Arial";ctx.textAlign="center";
+  ctx.beginPath();ctx.moveTo(left,dimY);ctx.lineTo(right,dimY);ctx.stroke();
+  dimPoints.forEach((pos,i)=>{
+    const px=left+pos*scale;
+    ctx.beginPath();ctx.moveTo(px,dimY-tick);ctx.lineTo(px,dimY+tick);ctx.stroke();
+    if(i<dimPoints.length-1){
+      const next=dimPoints[i+1],delta=next-pos,mx=(left+pos*scale+left+next*scale)/2;
+      ctx.fillText(`${Number(delta.toFixed(6))} ${unitL()}`,mx,dimY+22);
+    }
+  });
+  ctx.font="bold 11px Arial";ctx.fillText("Distances between consecutive points",(left+right)/2,dimY+42);
+}
+
+function drawSupport(ctx,x,y,type,color){
+  ctx.fillStyle=color;
+  if(type==="hinge"){ctx.beginPath();ctx.arc(x,y+14,9,0,2*Math.PI);ctx.strokeStyle=color;ctx.lineWidth=3;ctx.stroke();ctx.beginPath();ctx.moveTo(x,y+23);ctx.lineTo(x-20,y+43);ctx.lineTo(x+20,y+43);ctx.closePath();ctx.fill();}
+  else if(type==="fixed"){ctx.fillRect(x-5,y-4,10,32);for(let i=-20;i<=20;i+=8){ctx.strokeStyle=color;ctx.beginPath();ctx.moveTo(x-5,y+25+i/2);ctx.lineTo(x-15,y+35+i/2);ctx.stroke()}}
+  else{
+    ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-20,y+22);ctx.lineTo(x+20,y+22);ctx.closePath();ctx.fill();
+    if(type==="roller"){ctx.beginPath();ctx.arc(x-10,y+30,5,0,2*Math.PI);ctx.arc(x+10,y+30,5,0,2*Math.PI);ctx.fill()}
+  }
+}
+function arrow(ctx,x1,y1,x2,y2,color){
+  ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+  const s=7;ctx.beginPath();ctx.moveTo(x2,y2);ctx.lineTo(x2-s,y2-s);ctx.lineTo(x2+s,y2-s);ctx.closePath();ctx.fill();
+}
+function updateDrawing(){
+  const d=getInputs(); if(validate(d).length===0) drawBasicBeam(d);
+  else { const L=Number($("beamLength").value)||20,lo=Math.max(0,Number($("leftOverhang")?.value||0)),ro=Math.max(0,Number($("rightOverhang")?.value||0)); const fallback={L,span:L,leftOverhang:lo,rightOverhang:ro,totalL:L+lo+ro,supportA:lo,supportB:lo+L,pointLoads:[],udls:[],moments:[],axialLoads:[],intermediateSupports:[]};drawBasicBeam(fallback)}
+}
+function confirmStructure(){
+  const d=getInputs(),e=validate(d);
+  if(e.length){$("drawingStatus").className="status error";$("drawingStatus").innerHTML="⚠ "+e.join("<br>");return}
+  structureConfirmed=true;
+  $("drawingStatus").className="status success";
+  $("drawingStatus").textContent="✓ Structure confirmed. The analysis options are now available.";
+  $("analysisArea").classList.remove("hidden");
+  runAnalysis();
+}
+
+function determinacy(d){
+  if(d.type==="beam"){
+    const ls=$("leftSupport").value,rs=$("rightSupport").value;
+    const reactionMap={pin:2,hinge:2,roller:1,fixed:3};
+    const R=reactionMap[ls]+reactionMap[rs]+d.intermediateSupports.reduce((sum,s)=>sum+(s.type==="roller"?1:2),0);
+    const m=1,j=2+d.intermediateSupports.length;
+    // For a single beam/member with two external joints, planar beam/frame count:
+    // D = R + 3m - 3j.
+    const Nd=R+3*m-3*j;
+    return {R,m,j,Nd,formula:"N_d = R + 3m − 3j",note:d.intermediateSupports.length?"Each intermediate support is counted according to its selected reaction type. Positive N_d indicates the beam is statically indeterminate; stiffness/compatibility analysis is needed to solve reactions.":"For the single planar beam/member model used by this tool."};
+  }
+  const R=Number($("reactionCount").value),m=Number($("memberCount").value),j=Number($("jointCount").value);
+  const Nd=R+3*m-3*j;
+  return {R,m,j,Nd,formula:"N_d = R + 3m − 3j",note:"Planar rigid-frame/member count."};
+}
+
+function renderDeterminacy(d){
+  const q=determinacy(d);
+  let result=q.Nd===0?`<span class="badge green">STATISTICALLY DETERMINATE</span>`:
+    q.Nd>0?`<span class="badge yellow">STATISTICALLY INDETERMINATE</span>`:
+    `<span class="badge red">UNSTABLE / MECHANISM CHECK REQUIRED</span>`;
+  $("determinacyStep").innerHTML=`
+    <div class="step"><h3>Step 1 — Structural Determinacy</h3>
+    <p>Count the unknown reactions, members/beams, and joints for the selected structural model.</p>
+    <div class="equation">R = ${q.R} &nbsp;&nbsp; m = ${q.m} &nbsp;&nbsp; j = ${q.j}</div>
+    <div class="equation">${q.formula}<br><strong>N_d = ${q.Nd}</strong></div>
+    <p>${result}</p><p class="small">${q.note}</p></div>`;
+}
+
+function solveLinearSystem(A,b){
+  const n=b.length, M=A.map((row,i)=>row.slice().concat(b[i]));
+  for(let k=0;k<n;k++){
+    let pivot=k;
+    for(let i=k+1;i<n;i++) if(Math.abs(M[i][k])>Math.abs(M[pivot][k])) pivot=i;
+    if(Math.abs(M[pivot][k])<1e-12) return null;
+    [M[k],M[pivot]]=[M[pivot],M[k]];
+    for(let i=k+1;i<n;i++){
+      const f=M[i][k]/M[k][k];
+      for(let j=k;j<=n;j++) M[i][j]-=f*M[k][j];
+    }
+  }
+  const x=new Array(n).fill(0);
+  for(let i=n-1;i>=0;i--){
+    let sum=M[i][n];
+    for(let j=i+1;j<n;j++) sum-=M[i][j]*x[j];
+    x[i]=sum/M[i][i];
+  }
+  return x;
+}
+
+function beamNodeLocations(d){
+  const pts=[0,d.totalL,d.supportA,d.supportB];
+  d.intermediateSupports.forEach(s=>pts.push(s.x));
+  d.pointLoads.forEach(q=>pts.push(q.x));
+  d.udls.forEach(q=>{pts.push(q.start,q.end)});
+  d.moments.forEach(q=>pts.push(q.x));
+  return [...new Set(pts.filter(x=>Number.isFinite(x)&&x>=0&&x<=d.totalL))].sort((a,b)=>a-b);
+}
+
+function beamSupportConstraints(d,nodes){
+  const c=new Map();
+  const add=(x,type)=>{
+    const i=nodes.findIndex(v=>Math.abs(v-x)<1e-8);
+    if(i<0)return;
+    c.set(i,{vertical:true,rotation:type==='fixed'});
+  };
+  add(d.supportA,$('leftSupport').value);
+  add(d.supportB,$('rightSupport').value);
+  d.intermediateSupports.forEach(s=>add(s.x,s.type));
+  return c;
+}
+
+function elementLoadVector(a,b,d){
+  const L=b-a, f=new Array(4).fill(0);
+  d.udls.forEach(q=>{
+    if(Math.abs(q.start-a)<1e-8 && Math.abs(q.end-b)<1e-8){
+      const qu=-q.w; // upward-positive distributed load
+      f[0]+=qu*L/2;
+      f[1]+=qu*L*L/12;
+      f[2]+=qu*L/2;
+      f[3]-=qu*L*L/12;
+    }
+  });
+  d.pointLoads.forEach(q=>{
+    if(q.x>a+1e-8 && q.x<b-1e-8){
+      const P=q.dir*q.P, r=(q.x-a)/L, r2=r*r, r3=r2*r;
+      f[0]+=P*(1-3*r2+2*r3);
+      f[1]+=P*L*(r-2*r2+r3);
+      f[2]+=P*(3*r2-2*r3);
+      f[3]+=P*L*(-r2+r3);
+    }
+  });
+  d.moments.forEach(q=>{
+    if(q.x>a+1e-8 && q.x<b-1e-8){
+      const M=q.dir*q.M, r=(q.x-a)/L, r2=r*r;
+      f[0]+=M*(-6*r+6*r2)/L;
+      f[1]+=M*(1-4*r+3*r2);
+      f[2]+=M*(6*r-6*r2)/L;
+      f[3]+=M*(-2*r+3*r2);
+    }
+  });
+  return f;
+}
+
+function calculateReactions(d){
+  if(d.type!=='beam') return null;
+
+  // Exact statics solution for the common statically determinate two-support beam:
+  // pin/hinge at A and roller at B. Overhangs are fully included in the load
+  // coordinates, while the reaction lever arm is the supported span A-B.
+  // This is the primary solution path because equilibrium is exact for this case
+  // and does not require a stiffness approximation.
+  const leftType=$("leftSupport").value, rightType=$("rightSupport").value;
+  if(!d.intermediateSupports.length &&
+     (leftType==='pin'||leftType==='hinge') && rightType==='roller' && d.L>0){
+    const A=d.supportA, B=d.supportB;
+    const appliedFy=d.pointLoads.reduce((sum,q)=>sum+q.dir*q.P,0)
+      -d.udls.reduce((sum,q)=>sum+q.w*(q.end-q.start),0);
+    const loadMomentAboutA=d.pointLoads.reduce((sum,q)=>sum+q.dir*q.P*(q.x-A),0)
+      -d.udls.reduce((sum,q)=>sum+q.w*(q.end-q.start)*(((q.start+q.end)/2)-A),0)
+      +d.moments.reduce((sum,q)=>sum+q.dir*q.M,0);
+    const RB=-loadMomentAboutA/(B-A);
+    const RA=-appliedFy-RB;
+    const reactions={
+      bySupport:[
+        {x:A,vertical:RA,moment:0,type:'A'},
+        {x:B,vertical:RB,moment:0,type:'B'}
+      ],
+      RA,RB,
+      totalAppliedVertical:appliedFy,
+      totalAppliedMoment:loadMomentAboutA,
+      nodes:beamNodeLocations(d),
+      displacements:null,
+      isStiffness:false,
+      isEquilibriumExact:true
+    };
+    return reactions;
+  }
+
+  const nodes=beamNodeLocations(d), n=nodes.length, ndof=2*n;
+  if(n<2) return null;
+  const K=Array.from({length:ndof},()=>Array(ndof).fill(0));
+  const F=Array(ndof).fill(0);
+  const elems=[];
+  for(let e=0;e<n-1;e++){
+    const a=nodes[e],b=nodes[e+1],L=b-a;
+    const k=1e0; // EI scale; reactions for a constant-EI beam are independent of its magnitude.
+    const L2=L*L,L3=L2*L;
+    const ke=[[12/L3,6/L2,-12/L3,6/L2],[6/L2,4/L,-6/L2,2/L],[-12/L3,-6/L2,12/L3,-6/L2],[6/L2,2/L,-6/L2,4/L]];
+    const fl=elementLoadVector(a,b,d);
+    const map=[2*e,2*e+1,2*e+2,2*e+3];
+    for(let i=0;i<4;i++){F[map[i]]+=fl[i];for(let j=0;j<4;j++)K[map[i]][map[j]]+=k*ke[i][j];}
+    elems.push({a,b,L,map,fl});
+  }
+  // Loads exactly at nodes act directly on the corresponding DOF.
+  d.pointLoads.forEach(q=>{
+    const i=nodes.findIndex(x=>Math.abs(x-q.x)<1e-8); if(i>=0) F[2*i]+=q.dir*q.P;
+  });
+  d.moments.forEach(q=>{
+    const i=nodes.findIndex(x=>Math.abs(x-q.x)<1e-8); if(i>=0) F[2*i+1]+=q.dir*q.M;
+  });
+  const constraints=beamSupportConstraints(d,nodes), constrained=[];
+  constraints.forEach((c,i)=>{if(c.vertical)constrained.push(2*i);if(c.rotation)constrained.push(2*i+1)});
+  if(!constrained.length) return null;
+  // Eliminate constrained DOFs by imposing zero displacement/rotation.
+  const free=[];for(let i=0;i<ndof;i++)if(!constrained.includes(i))free.push(i);
+  const Kr=free.map(i=>free.map(j=>K[i][j])), Fr=free.map(i=>F[i]);
+  const uf=free.length?solveLinearSystem(Kr,Fr):[];
+  if(free.length && !uf) return null;
+  const u=new Array(ndof).fill(0);free.forEach((dof,i)=>u[dof]=uf[i]);
+  const Ku=K.map(row=>row.reduce((sum,v,j)=>sum+v*u[j],0));
+  const reactions={bySupport:[],RA:0,RB:0,totalAppliedVertical:0,totalAppliedMoment:0,nodes,displacements:u};
+  constraints.forEach((c,i)=>{
+    const rv=Ku[2*i]-F[2*i], rm=Ku[2*i+1]-F[2*i+1];
+    reactions.bySupport.push({x:nodes[i],vertical:rv,moment:rm,type:(Math.abs(nodes[i]-d.supportA)<1e-8?'A':Math.abs(nodes[i]-d.supportB)<1e-8?'B':'Intermediate')});
+  });
+  reactions.RA=reactions.bySupport.find(r=>r.type==='A')?.vertical||0;
+  reactions.RB=reactions.bySupport.find(r=>r.type==='B')?.vertical||0;
+  const appliedFy=d.pointLoads.reduce((s,q)=>s+q.dir*q.P,0)-d.udls.reduce((s,q)=>s+q.w*(q.end-q.start),0);
+  reactions.totalAppliedVertical=appliedFy;
+  reactions.totalAppliedMoment=d.pointLoads.reduce((s,q)=>s+q.dir*q.P*(q.x-d.supportA),0)-d.udls.reduce((s,q)=>s+q.w*(q.end-q.start)*((q.start+q.end)/2-d.supportA),0)+d.moments.reduce((s,q)=>s+q.dir*q.M,0);
+  reactions.elements=elems;
+  reactions.isStiffness=true;
+  return reactions;
+}
+
+function shearAt(x,d,r){
+  let V=0;
+  if(x>d.supportA)V+=r.RA;
+  if(x>d.supportB)V+=r.RB;
+  d.pointLoads.forEach(q=>{if(x>q.x)V+=q.dir*q.P});
+  d.udls.forEach(q=>{
+    const len=Math.max(0,Math.min(x,q.end)-q.start);
+    if(len>0)V-=q.w*len;
+  });
+  return V;
+}
+function momentAt(x,d,r){
+  let M=0;
+  if(x>d.supportA)M+=r.RA*(x-d.supportA);
+  if(x>d.supportB)M+=r.RB*(x-d.supportB);
+  d.pointLoads.forEach(q=>{if(x>q.x)M+=q.dir*q.P*(x-q.x)});
+  d.udls.forEach(q=>{
+    const len=Math.max(0,Math.min(x,q.end)-q.start);
+    if(len>0){const F=q.w*len,c=q.start+len/2;M-=F*(x-c)}
+  });
+  // An applied external couple produces the opposite jump in the internal
+  // bending-moment diagram. With positive external moment defined CCW, the
+  // internal section moment on the left segment changes by -M.
+  d.moments.forEach(q=>{if(x>q.x)M-=q.dir*q.M});
+  return M;
+}
+
+function buildDiagramData(d,r){
+  // Build exact left/right values at discontinuities. This is important for
+  // structural diagrams: point forces create jumps in V, while applied
+  // couples create jumps in M. Sampling only one value at the discontinuity
+  // can make the plotted diagram appear to have the wrong ordinate.
+  const critical=new Set([0,d.totalL,d.supportA,d.supportB]);
+  d.pointLoads.forEach(q=>critical.add(q.x));
+  d.udls.forEach(q=>{critical.add(q.start);critical.add(q.end)});
+  d.moments.forEach(q=>critical.add(q.x));
+  const sorted=[...critical].sort((a,b)=>a-b);
+  const epsBase=Math.max(d.totalL,1)*1e-7;
+  const shear=[],moment=[];
+
+  const pushRegularInterval=(a,b)=>{
+    if(b<=a+1e-12)return;
+    const n=25;
+    for(let k=0;k<=n;k++){
+      const x=a+(b-a)*k/n;
+      // Avoid duplicating exact discontinuity points; those are represented
+      // explicitly by left/right values below.
+      if(k===0 && a!==0) continue;
+      if(k===n && b!==d.totalL) continue;
+      shear.push({x,y:shearAt(x,d,r)});
+      moment.push({x,y:momentAt(x,d,r)});
+    }
+  };
+
+  // Add each critical location with its physically meaningful ordinate.
+  // For shear, the value at the location is the left-hand value and the
+  // immediate right-hand value is added separately when a point load or
+  // reaction is present. For moment, the same convention is used for an
+  // applied couple.
+  sorted.forEach((x,i)=>{
+    const hasShearJump =
+      Math.abs(x-d.supportA)<1e-9 ||
+      Math.abs(x-d.supportB)<1e-9 ||
+      d.pointLoads.some(q=>Math.abs(q.x-x)<1e-9);
+    const hasMomentJump = d.moments.some(q=>Math.abs(q.x-x)<1e-9);
+    shear.push({x,y:shearAt(x,d,r)});
+    moment.push({x,y:momentAt(x,d,r)});
+
+    if(hasShearJump && x<d.totalL){
+      const xr=Math.min(d.totalL,x+epsBase);
+      shear.push({x:xr,y:shearAt(xr,d,r)});
+      // Moment is continuous across a point force/support.
+      moment.push({x:xr,y:momentAt(xr,d,r)});
+    }
+    if(hasMomentJump && x<d.totalL){
+      const xr=Math.min(d.totalL,x+epsBase);
+      shear.push({x:xr,y:shearAt(xr,d,r)});
+      moment.push({x:xr,y:momentAt(xr,d,r)});
+    }
+
+    if(i<sorted.length-1) pushRegularInterval(x,sorted[i+1]);
+  });
+
+  const clean=(arr)=>arr
+    .filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y))
+    .sort((a,b)=>a.x-b.x)
+    .filter((p,i,a)=>i===0 || Math.abs(p.x-a[i-1].x)>1e-12 || Math.abs(p.y-a[i-1].y)>1e-12);
+  return {shear:clean(shear),moment:clean(moment)};
+}
+function numericalCriticalMoments(d,r){
+  const candidates=[0,d.totalL,d.supportA,d.supportB,...d.pointLoads.map(q=>q.x),...d.udls.flatMap(q=>[q.start,q.end]),...d.moments.map(q=>q.x)];
+  // Locate V=0 within each continuous interval by bisection.
+  const bounds=[...new Set(candidates)].sort((a,b)=>a-b);
+  for(let i=0;i<bounds.length-1;i++){
+    let a=bounds[i]+1e-8,b=bounds[i+1]-1e-8;
+    if(b<=a)continue;
+    let va=shearAt(a,d,r),vb=shearAt(b,d,r);
+    if(va===0)candidates.push(a);
+    if(va*vb<0){
+      for(let k=0;k<60;k++){const mid=(a+b)/2,vm=shearAt(mid,d,r);if(va*vm<=0){b=mid;vb=vm}else{a=mid;va=vm}}
+      candidates.push((a+b)/2);
+    }
+  }
+  const vals=[...new Set(candidates)].filter(x=>x>=0&&x<=d.totalL).map(x=>({x,M:momentAt(x,d,r)}));
+  vals.sort((a,b)=>Math.abs(b.M)-Math.abs(a.M));
+  return vals[0]||{x:0,M:0};
+}
+
+function runAnalysis(){
+  const d=getInputs(),q=determinacy(d);
+  renderDeterminacy(d);
+  const reaction=calculateReactions(d);
+  if(!reaction){
+    const hasIntermediate=d.type==="beam"&&d.intermediateSupports.length>0;
+    const hasOverhang=d.type==="beam"&&(d.leftOverhang>0||d.rightOverhang>0);
+    const actuallyIndeterminate=q.Nd>0;
+    const message=actuallyIndeterminate
+      ? "This structure is statically indeterminate for the selected support arrangement. A compatibility/stiffness solution is required before reactions and diagrams can be reported."
+      : hasIntermediate
+        ? "The selected intermediate-support arrangement requires the continuous-beam compatibility solution, which is not yet available for this configuration."
+        : hasOverhang
+          ? "The beam is determinate, but the selected support arrangement is outside the current exact equilibrium solution path."
+          : "The selected support arrangement is outside the current detailed beam solution path.";
+    $("reactionStep").innerHTML=`<div class="step"><h3>Step 2 — Support Reactions</h3><div class="status warning">${message}</div></div>`;
+    $("internalStep").innerHTML="";
+    $("verificationStep").innerHTML="";
+    return;
+  }
+  const diagrams=buildDiagramData(d,reaction);
+  const crit=numericalCriticalMoments(d,reaction);
+  const maxV=Math.max(...diagrams.shear.map(p=>Math.abs(p.y)));
+  const endMoment=momentAt(d.totalL,d,reaction);
+  $("reactionStep").innerHTML=`
+    <div class="step"><h3>Step 2 — Support Reactions</h3>
+    <p>Apply vertical-force and moment equilibrium.</p>
+    <div class="equation">ΣF<sub>y</sub> = 0<br>R<sub>A</sub> + R<sub>B</sub> + ΣF<sub>applied</sub> = 0</div>
+    <div class="equation">ΣM<sub>A</sub> = 0<br>R<sub>B</sub>(${fmt(d.L)}) + ΣM<sub>applied loads about A</sub> = 0</div>
+    <div class="result-grid">
+      <div class="result-box"><div class="label">Reaction A</div><div class="value">${fmt(reaction.RA)} ${unitF()}</div></div>
+      <div class="result-box"><div class="label">Reaction B</div><div class="value">${fmt(reaction.RB)} ${unitF()}</div></div>
+    </div>
+    <p class="small">${reaction.isEquilibriumExact?"Reactions were obtained directly from ΣFy = 0 and ΣM<sub>A</sub> = 0, using the actual A–B support spacing and the full physical beam including overhangs.":"Reactions were obtained from the beam stiffness model with the selected support constraints."}</p>
+    </div></div>`;
+
+  $("internalStep").innerHTML=`
+    <div class="step"><h3>Step 3 — Internal Forces</h3>
+    <p>Use a section cut and equilibrium to obtain N, V, and M. For the current beam engine, V(x) and M(x) are generated automatically from the loads to the left of the section.</p>
+    <div class="equation">V(x) = ${fmt(reaction.RA)} + contributions from loads to the left of x</div>
+    <div class="equation">M(x) = R<sub>A</sub>x + contributions from loads to the left of x</div>
+    <p>For a user-selected section, the internal resultants are shown below.</p>
+    <div class="grid"><div><label>Section Location x (${unitL()})</label><input id="sectionX" type="number" min="0" max="${d.totalL}" step="0.01" value="${Math.min(d.supportB,d.totalL)}" oninput="updateSection()"></div></div>
+    <div id="sectionResult" class="status success"></div></div>`;
+
+  $("verificationStep").innerHTML=`
+    <div class="step"><h3>Step 4 — Engineering Checks</h3>
+      <div class="result-grid">
+        <div class="result-box"><div class="label">ΣFy residual</div><div class="value">${fmt(reaction.RA+reaction.RB+reaction.totalAppliedVertical)}</div></div>
+        <div class="result-box"><div class="label">M(end)</div><div class="value">${fmt(endMoment)} ${unitF()}·${unitL()}</div></div>
+        <div class="result-box"><div class="label">Max |V|</div><div class="value">${fmt(maxV)} ${unitF()}</div></div>
+        <div class="result-box"><div class="label">Critical |M|</div><div class="value">${fmt(Math.abs(crit.M))} ${unitF()}·${unitL()}</div></div>
+      </div>
+      <p class="small">The checks are intended as verification aids. They do not replace an independent hand solution.</p>
+    </div>`;
+
+  updateSection();
+  renderResults(d,reaction,diagrams,crit);
+}
+
+function updateSection(){
+  if(!lastAnalysis)return;
+  const x=Math.max(0,Math.min(lastAnalysis.data.totalL,Number($("sectionX")?.value||0)));
+  const d=lastAnalysis.data,r=lastAnalysis.reaction;
+  const N=0; // Current beam model has no longitudinal reaction solver; displayed as zero for vertical loading.
+  const V=shearAt(x,d,r),M=momentAt(x,d,r);
+  $("sectionResult").innerHTML=`At x = <strong>${fmt(x)} ${unitL()}</strong>: &nbsp; N = <strong>${fmt(N)} ${unitF()}</strong>, &nbsp; V = <strong>${fmt(V)} ${unitF()}</strong>, &nbsp; M = <strong>${fmt(M)} ${unitF()}·${unitL()}</strong>`;
+}
+
+function renderResults(d,r,diagrams,crit){
+  lastAnalysis={data:d,reaction:r,diagrams};
+  const maxV=Math.max(...diagrams.shear.map(p=>Math.abs(p.y)));
+  const minM=Math.min(...diagrams.moment.map(p=>p.y)),maxM=Math.max(...diagrams.moment.map(p=>p.y));
+  const absM=Math.abs(crit.M);
+  $("resultBoxes").innerHTML=`
+    <div class="result-box"><div class="label">R<sub>A</sub></div><div class="value">${fmt(r.RA)} ${unitF()}</div></div>
+    <div class="result-box"><div class="label">R<sub>B</sub></div><div class="value">${fmt(r.RB)} ${unitF()}</div></div>
+    <div class="result-box"><div class="label">Maximum |V|</div><div class="value">${fmt(maxV)} ${unitF()}</div></div>
+    <div class="result-box"><div class="label">Maximum |M|</div><div class="value">${fmt(absM)} ${unitF()}·${unitL()}</div></div>
+    <div class="result-box"><div class="label">Critical Moment Location</div><div class="value">${fmt(crit.x)} ${unitL()}</div></div>`;
+  const fy=r.RA+r.RB+r.totalAppliedVertical;
+  const pass=Math.abs(fy)<1e-7 && Math.abs(momentAt(d.totalL,d,r))<1e-7;
+  $("equilibriumStatus").className="status "+(pass?"success":"warning");
+  $("equilibriumStatus").innerHTML=pass?"✓ Equilibrium/end-condition checks passed for the supported beam model.":`Review checks: ΣFy residual = ${fy.toExponential(3)}, M(end) = ${momentAt(d.totalL,d,r).toExponential(3)}.`;
+  drawDiagram("shearCanvas",diagrams.shear,"Shear Force","V","#1769aa");
+  drawDiagram("momentCanvas",diagrams.moment,"Bending Moment","M","#c2410c");
+  const locs=[0,d.totalL,d.supportA,d.supportB,...d.pointLoads.map(q=>q.x),...d.udls.flatMap(q=>[q.start,q.end]),...d.moments.map(q=>q.x)];
+  const unique=[...new Set(locs)].sort((a,b)=>a-b);
+  $("valuesTable").innerHTML=unique.map(x=>`<tr><td>${fmt(x)} ${unitL()}</td><td>${fmt(shearAt(x,d,r))} ${unitF()}</td><td>${fmt(momentAt(x,d,r))} ${unitF()}·${unitL()}</td></tr>`).join("");
+}
+
+function drawDiagram(id,points,title,symbol,color){
+  const c=$(id),ctx=c.getContext("2d"),r=c.getBoundingClientRect(),ratio=devicePixelRatio||1;
+  c.width=r.width*ratio;c.height=r.height*ratio;ctx.setTransform(ratio,0,0,ratio,0,0);
+  const W=r.width,H=r.height,L=65,R=30,T=42,B=42,pw=W-L-R,ph=H-T-B;
+  // Keep the plotted range padded for readability, but NEVER use the padded
+  // range as the numerical value printed on the diagram.  The old behavior
+  // could show a value such as 30.16 at the top of a shear diagram even when
+  // the actual maximum shear was 14.30.
+  const dataMin=Math.min(0,...points.map(p=>p.y));
+  const dataMax=Math.max(0,...points.map(p=>p.y));
+  let min=dataMin,max=dataMax;
+  if(Math.abs(max-min)<1e-9){max=1;min=-1}
+  const pad=Math.max((max-min)*.12,1);
+  const plotMin=min-pad,plotMax=max+pad;
+  const px=x=>L+(x/(points[points.length-1].x||1))*pw;
+  // Shear is plotted with positive values upward. For the bending-moment
+  // diagram use the conventional structural-analysis presentation: positive
+  // (sagging) M is plotted below the beam/reference axis, corresponding to
+  // tension in the bottom/significant fiber.
+  const py=y=>id==="momentCanvas"
+    ? T+(y-plotMin)/(plotMax-plotMin)*ph
+    : T+(plotMax-y)/(plotMax-plotMin)*ph;
+  ctx.clearRect(0,0,W,H);ctx.fillStyle="#fff";ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle="#e4e7ec";ctx.lineWidth=1;
+  for(let i=0;i<=5;i++){const gy=T+i*ph/5;ctx.beginPath();ctx.moveTo(L,gy);ctx.lineTo(W-R,gy);ctx.stroke()}
+  const zy=py(0);ctx.strokeStyle="#667085";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(L,zy);ctx.lineTo(W-R,zy);ctx.stroke();
+  ctx.strokeStyle=color;ctx.lineWidth=3;ctx.beginPath();
+  points.forEach((p,i)=>{const x=px(p.x),y=py(p.y);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)});ctx.stroke();
+  ctx.globalAlpha=.12;ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(px(points[0].x),zy);
+  points.forEach(p=>ctx.lineTo(px(p.x),py(p.y)));ctx.lineTo(px(points[points.length-1].x),zy);ctx.closePath();ctx.fill();ctx.globalAlpha=1;
+  ctx.fillStyle="#172033";ctx.font="bold 15px Arial";ctx.textAlign="left";
+  ctx.fillText(`${title} (${symbol})`,L,23);
+  if(id==="momentCanvas"){
+    ctx.font="11px Arial";ctx.fillStyle="#667085";
+    ctx.fillText("Positive M (sagging) plotted below the beam — bottom fiber in tension",L,37);
+    ctx.font="12px Arial";ctx.fillStyle="#172033";
+    ctx.fillText(dataMax.toFixed(2),8,H-B);ctx.fillText("0",35,zy+4);ctx.fillText(dataMin.toFixed(2),8,T+4);
+  } else {
+    ctx.font="12px Arial";ctx.fillStyle="#172033";
+    ctx.fillText(dataMax.toFixed(2),8,T+4);ctx.fillText("0",35,zy+4);ctx.fillText(dataMin.toFixed(2),8,H-B);
+  }
+  ctx.textAlign="center";ctx.fillText(`Beam Position (${unitL()})`,W/2,H-9);
+  ctx.textAlign="left";ctx.fillText("0",L,H-22);ctx.textAlign="right";ctx.fillText(points[points.length-1].x.toFixed(2),W-R,H-22);
+}
+
+function showMode(mode){
+  $("guidedMode").classList.toggle("hidden",mode!=="guided");
+  $("resultsMode").classList.toggle("hidden",mode!=="results");
+  $("guidedTab").classList.toggle("active",mode==="guided");
+  $("resultsTab").classList.toggle("active",mode==="results");
+  if(mode==="results" && lastAnalysis){
+    renderResults(lastAnalysis.data,lastAnalysis.reaction,lastAnalysis.diagrams,numericalCriticalMoments(lastAnalysis.data,lastAnalysis.reaction));
+  }
+}
+
+function loadExample(){
+  $("analysisType").value="beam";updateSystemInputs();
+  $("beamLength").value=20;$("leftOverhang").value=0;$("rightOverhang").value=0;$("leftSupport").value="pin";$("rightSupport").value="roller";
+  $("intermediateSupports").innerHTML="";
+  $("pointLoads").innerHTML="";$("udlLoads").innerHTML="";$("momentLoads").innerHTML="";$("axialLoads").innerHTML="";
+  addPointLoad(10,8);addUDL(1,0,20);
+  updateDrawing();
+  structureConfirmed=false;
+  $("drawingStatus").className="status warning";
+  $("drawingStatus").textContent="Example loaded. Review the drawing, then confirm the structure.";
+}
+
+window.addEventListener("input",updateDrawing);
+window.addEventListener("resize",()=>{updateDrawing();if(lastAnalysis){drawDiagram("shearCanvas",lastAnalysis.diagrams.shear,"Shear Force","V","#1769aa");drawDiagram("momentCanvas",lastAnalysis.diagrams.moment,"Bending Moment","M","#c2410c")}});
+
+addPointLoad(10,8);
+addUDL(1,0,20);
+updateDrawing();
+</script>
+</body>
+</html>
