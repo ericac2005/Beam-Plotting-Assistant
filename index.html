@@ -428,18 +428,161 @@ function renderDeterminacy(d){
     <p>${result}</p><p class="small">${q.note}</p></div>`;
 }
 
+function solveLinearSystem(A,b){
+  const n=b.length, M=A.map((row,i)=>row.slice().concat(b[i]));
+  for(let k=0;k<n;k++){
+    let pivot=k;
+    for(let i=k+1;i<n;i++) if(Math.abs(M[i][k])>Math.abs(M[pivot][k])) pivot=i;
+    if(Math.abs(M[pivot][k])<1e-12) return null;
+    [M[k],M[pivot]]=[M[pivot],M[k]];
+    for(let i=k+1;i<n;i++){
+      const f=M[i][k]/M[k][k];
+      for(let j=k;j<=n;j++) M[i][j]-=f*M[k][j];
+    }
+  }
+  const x=new Array(n).fill(0);
+  for(let i=n-1;i>=0;i--){
+    let sum=M[i][n];
+    for(let j=i+1;j<n;j++) sum-=M[i][j]*x[j];
+    x[i]=sum/M[i][i];
+  }
+  return x;
+}
+
+function beamNodeLocations(d){
+  const pts=[0,d.totalL,d.supportA,d.supportB];
+  d.intermediateSupports.forEach(s=>pts.push(s.x));
+  d.pointLoads.forEach(q=>pts.push(q.x));
+  d.udls.forEach(q=>{pts.push(q.start,q.end)});
+  d.moments.forEach(q=>pts.push(q.x));
+  return [...new Set(pts.filter(x=>Number.isFinite(x)&&x>=0&&x<=d.totalL))].sort((a,b)=>a-b);
+}
+
+function beamSupportConstraints(d,nodes){
+  const c=new Map();
+  const add=(x,type)=>{
+    const i=nodes.findIndex(v=>Math.abs(v-x)<1e-8);
+    if(i<0)return;
+    c.set(i,{vertical:true,rotation:type==='fixed'});
+  };
+  add(d.supportA,$('leftSupport').value);
+  add(d.supportB,$('rightSupport').value);
+  d.intermediateSupports.forEach(s=>add(s.x,s.type));
+  return c;
+}
+
+function elementLoadVector(a,b,d){
+  const L=b-a, f=new Array(4).fill(0);
+  d.udls.forEach(q=>{
+    if(Math.abs(q.start-a)<1e-8 && Math.abs(q.end-b)<1e-8){
+      const qu=-q.w; // upward-positive distributed load
+      f[0]+=qu*L/2;
+      f[1]+=qu*L*L/12;
+      f[2]+=qu*L/2;
+      f[3]-=qu*L*L/12;
+    }
+  });
+  d.pointLoads.forEach(q=>{
+    if(q.x>a+1e-8 && q.x<b-1e-8){
+      const P=q.dir*q.P, r=(q.x-a)/L, r2=r*r, r3=r2*r;
+      f[0]+=P*(1-3*r2+2*r3);
+      f[1]+=P*L*(r-2*r2+r3);
+      f[2]+=P*(3*r2-2*r3);
+      f[3]+=P*L*(-r2+r3);
+    }
+  });
+  d.moments.forEach(q=>{
+    if(q.x>a+1e-8 && q.x<b-1e-8){
+      const M=q.dir*q.M, r=(q.x-a)/L, r2=r*r;
+      f[0]+=M*(-6*r+6*r2)/L;
+      f[1]+=M*(1-4*r+3*r2);
+      f[2]+=M*(6*r-6*r2)/L;
+      f[3]+=M*(-2*r+3*r2);
+    }
+  });
+  return f;
+}
+
 function calculateReactions(d){
-  if(d.type!=="beam") return null;
-  // The detailed beam reaction solver assumes a determinate pin/hinge-at-A and roller-at-B beam.
-  // Overhangs are allowed; loads are referenced to the physical left end.
-  const left=$("leftSupport").value,right=$("rightSupport").value;
-  if(!((left==="pin"||left==="hinge")&&right==="roller"&&d.intermediateSupports.length===0)) return null;
-  let Fy=0,MA=0;
-  d.pointLoads.forEach(q=>{const F=q.dir*q.P;Fy+=F;MA+=F*(q.x-d.supportA)});
-  d.udls.forEach(q=>{const F=-(q.w*(q.end-q.start));const x=(q.start+q.end)/2;Fy+=F;MA+=F*(x-d.supportA)});
-  d.moments.forEach(q=>{MA+=q.dir*q.M});
-  const RB=-MA/d.L,RA=-Fy-RB;
-  return {RA,RB,totalAppliedVertical:-Fy,totalAppliedMoment:MA};
+  if(d.type!=='beam') return null;
+
+  // Exact statics solution for the common statically determinate two-support beam:
+  // pin/hinge at A and roller at B. Overhangs are fully included in the load
+  // coordinates, while the reaction lever arm is the supported span A-B.
+  // This is the primary solution path because equilibrium is exact for this case
+  // and does not require a stiffness approximation.
+  const leftType=$("leftSupport").value, rightType=$("rightSupport").value;
+  if(!d.intermediateSupports.length &&
+     (leftType==='pin'||leftType==='hinge') && rightType==='roller' && d.L>0){
+    const A=d.supportA, B=d.supportB;
+    const appliedFy=d.pointLoads.reduce((sum,q)=>sum+q.dir*q.P,0)
+      -d.udls.reduce((sum,q)=>sum+q.w*(q.end-q.start),0);
+    const loadMomentAboutA=d.pointLoads.reduce((sum,q)=>sum+q.dir*q.P*(q.x-A),0)
+      -d.udls.reduce((sum,q)=>sum+q.w*(q.end-q.start)*(((q.start+q.end)/2)-A),0)
+      +d.moments.reduce((sum,q)=>sum+q.dir*q.M,0);
+    const RB=-loadMomentAboutA/(B-A);
+    const RA=-appliedFy-RB;
+    const reactions={
+      bySupport:[
+        {x:A,vertical:RA,moment:0,type:'A'},
+        {x:B,vertical:RB,moment:0,type:'B'}
+      ],
+      RA,RB,
+      totalAppliedVertical:appliedFy,
+      totalAppliedMoment:loadMomentAboutA,
+      nodes:beamNodeLocations(d),
+      displacements:null,
+      isStiffness:false,
+      isEquilibriumExact:true
+    };
+    return reactions;
+  }
+
+  const nodes=beamNodeLocations(d), n=nodes.length, ndof=2*n;
+  if(n<2) return null;
+  const K=Array.from({length:ndof},()=>Array(ndof).fill(0));
+  const F=Array(ndof).fill(0);
+  const elems=[];
+  for(let e=0;e<n-1;e++){
+    const a=nodes[e],b=nodes[e+1],L=b-a;
+    const k=1e0; // EI scale; reactions for a constant-EI beam are independent of its magnitude.
+    const L2=L*L,L3=L2*L;
+    const ke=[[12/L3,6/L2,-12/L3,6/L2],[6/L2,4/L,-6/L2,2/L],[-12/L3,-6/L2,12/L3,-6/L2],[6/L2,2/L,-6/L2,4/L]];
+    const fl=elementLoadVector(a,b,d);
+    const map=[2*e,2*e+1,2*e+2,2*e+3];
+    for(let i=0;i<4;i++){F[map[i]]+=fl[i];for(let j=0;j<4;j++)K[map[i]][map[j]]+=k*ke[i][j];}
+    elems.push({a,b,L,map,fl});
+  }
+  // Loads exactly at nodes act directly on the corresponding DOF.
+  d.pointLoads.forEach(q=>{
+    const i=nodes.findIndex(x=>Math.abs(x-q.x)<1e-8); if(i>=0) F[2*i]+=q.dir*q.P;
+  });
+  d.moments.forEach(q=>{
+    const i=nodes.findIndex(x=>Math.abs(x-q.x)<1e-8); if(i>=0) F[2*i+1]+=q.dir*q.M;
+  });
+  const constraints=beamSupportConstraints(d,nodes), constrained=[];
+  constraints.forEach((c,i)=>{if(c.vertical)constrained.push(2*i);if(c.rotation)constrained.push(2*i+1)});
+  if(!constrained.length) return null;
+  // Eliminate constrained DOFs by imposing zero displacement/rotation.
+  const free=[];for(let i=0;i<ndof;i++)if(!constrained.includes(i))free.push(i);
+  const Kr=free.map(i=>free.map(j=>K[i][j])), Fr=free.map(i=>F[i]);
+  const uf=free.length?solveLinearSystem(Kr,Fr):[];
+  if(free.length && !uf) return null;
+  const u=new Array(ndof).fill(0);free.forEach((dof,i)=>u[dof]=uf[i]);
+  const Ku=K.map(row=>row.reduce((sum,v,j)=>sum+v*u[j],0));
+  const reactions={bySupport:[],RA:0,RB:0,totalAppliedVertical:0,totalAppliedMoment:0,nodes,displacements:u};
+  constraints.forEach((c,i)=>{
+    const rv=Ku[2*i]-F[2*i], rm=Ku[2*i+1]-F[2*i+1];
+    reactions.bySupport.push({x:nodes[i],vertical:rv,moment:rm,type:(Math.abs(nodes[i]-d.supportA)<1e-8?'A':Math.abs(nodes[i]-d.supportB)<1e-8?'B':'Intermediate')});
+  });
+  reactions.RA=reactions.bySupport.find(r=>r.type==='A')?.vertical||0;
+  reactions.RB=reactions.bySupport.find(r=>r.type==='B')?.vertical||0;
+  const appliedFy=d.pointLoads.reduce((s,q)=>s+q.dir*q.P,0)-d.udls.reduce((s,q)=>s+q.w*(q.end-q.start),0);
+  reactions.totalAppliedVertical=appliedFy;
+  reactions.totalAppliedMoment=d.pointLoads.reduce((s,q)=>s+q.dir*q.P*(q.x-d.supportA),0)-d.udls.reduce((s,q)=>s+q.w*(q.end-q.start)*((q.start+q.end)/2-d.supportA),0)+d.moments.reduce((s,q)=>s+q.dir*q.M,0);
+  reactions.elements=elems;
+  reactions.isStiffness=true;
+  return reactions;
 }
 
 function shearAt(x,d,r){
@@ -499,7 +642,7 @@ function numericalCriticalMoments(d,r){
       candidates.push((a+b)/2);
     }
   }
-  const vals=[...new Set(candidates)].filter(x=>x>=0&&x<=d.L).map(x=>({x,M:momentAt(x,d,r)}));
+  const vals=[...new Set(candidates)].filter(x=>x>=0&&x<=d.totalL).map(x=>({x,M:momentAt(x,d,r)}));
   vals.sort((a,b)=>Math.abs(b.M)-Math.abs(a.M));
   return vals[0]||{x:0,M:0};
 }
@@ -511,7 +654,15 @@ function runAnalysis(){
   if(!reaction){
     const hasIntermediate=d.type==="beam"&&d.intermediateSupports.length>0;
     const hasOverhang=d.type==="beam"&&(d.leftOverhang>0||d.rightOverhang>0);
-    $("reactionStep").innerHTML=`<div class="step"><h3>Step 2 — Support Reactions</h3><div class="status warning">${hasIntermediate?"Intermediate supports make this a continuous beam. The structure is drawn and its determinacy count is shown, but reactions and SFD/BMD are not calculated because the current solver does not yet include beam stiffness and deflection-compatibility equations.":hasOverhang?"This overhanging beam is compatible with the detailed pin/hinge-at-A and roller-at-B solver when no intermediate supports are present. If the selected supports or added features make the system indeterminate, results are withheld rather than estimated.":"The detailed reaction engine currently requires a determinate pin/hinge-at-A and roller-at-B beam for the single-beam calculation. Use Guided Analysis for the determinacy check, or select Pin–Roller to calculate reactions and diagrams."}</div></div>`;
+    const actuallyIndeterminate=q.Nd>0;
+    const message=actuallyIndeterminate
+      ? "This structure is statically indeterminate for the selected support arrangement. A compatibility/stiffness solution is required before reactions and diagrams can be reported."
+      : hasIntermediate
+        ? "The selected intermediate-support arrangement requires the continuous-beam compatibility solution, which is not yet available for this configuration."
+        : hasOverhang
+          ? "The beam is determinate, but the selected support arrangement is outside the current exact equilibrium solution path."
+          : "The selected support arrangement is outside the current detailed beam solution path.";
+    $("reactionStep").innerHTML=`<div class="step"><h3>Step 2 — Support Reactions</h3><div class="status warning">${message}</div></div>`;
     $("internalStep").innerHTML="";
     $("verificationStep").innerHTML="";
     return;
@@ -523,11 +674,13 @@ function runAnalysis(){
   $("reactionStep").innerHTML=`
     <div class="step"><h3>Step 2 — Support Reactions</h3>
     <p>Apply vertical-force and moment equilibrium.</p>
-    <div class="equation">ΣF<sub>y</sub> = 0<br>R<sub>A</sub> + R<sub>B</sub> + applied vertical forces = 0</div>
-    <div class="equation">ΣM<sub>A</sub> = 0<br>R<sub>B</sub>(${d.L}) + ΣM<sub>loads about A</sub> = 0</div>
+    <div class="equation">ΣF<sub>y</sub> = 0<br>R<sub>A</sub> + R<sub>B</sub> + ΣF<sub>applied</sub> = 0</div>
+    <div class="equation">ΣM<sub>A</sub> = 0<br>R<sub>B</sub>(${fmt(d.L)}) + ΣM<sub>applied loads about A</sub> = 0</div>
     <div class="result-grid">
       <div class="result-box"><div class="label">Reaction A</div><div class="value">${fmt(reaction.RA)} ${unitF()}</div></div>
       <div class="result-box"><div class="label">Reaction B</div><div class="value">${fmt(reaction.RB)} ${unitF()}</div></div>
+    </div>
+    <p class="small">${reaction.isEquilibriumExact?"Reactions were obtained directly from ΣFy = 0 and ΣM<sub>A</sub> = 0, using the actual A–B support spacing and the full physical beam including overhangs.":"Reactions were obtained from the beam stiffness model with the selected support constraints."}</p>
     </div></div>`;
 
   $("internalStep").innerHTML=`
@@ -542,8 +695,8 @@ function runAnalysis(){
   $("verificationStep").innerHTML=`
     <div class="step"><h3>Step 4 — Engineering Checks</h3>
       <div class="result-grid">
-        <div class="result-box"><div class="label">ΣFy residual</div><div class="value">${fmt(reaction.RA+reaction.RB-reaction.totalAppliedVertical)}</div></div>
-        <div class="result-box"><div class="label">M(L)</div><div class="value">${fmt(endMoment)} ${unitF()}·${unitL()}</div></div>
+        <div class="result-box"><div class="label">ΣFy residual</div><div class="value">${fmt(reaction.RA+reaction.RB+reaction.totalAppliedVertical)}</div></div>
+        <div class="result-box"><div class="label">M(end)</div><div class="value">${fmt(endMoment)} ${unitF()}·${unitL()}</div></div>
         <div class="result-box"><div class="label">Max |V|</div><div class="value">${fmt(maxV)} ${unitF()}</div></div>
         <div class="result-box"><div class="label">Critical |M|</div><div class="value">${fmt(Math.abs(crit.M))} ${unitF()}·${unitL()}</div></div>
       </div>
@@ -574,7 +727,7 @@ function renderResults(d,r,diagrams,crit){
     <div class="result-box"><div class="label">Maximum |V|</div><div class="value">${fmt(maxV)} ${unitF()}</div></div>
     <div class="result-box"><div class="label">Maximum |M|</div><div class="value">${fmt(absM)} ${unitF()}·${unitL()}</div></div>
     <div class="result-box"><div class="label">Critical Moment Location</div><div class="value">${fmt(crit.x)} ${unitL()}</div></div>`;
-  const fy=r.RA+r.RB-r.totalAppliedVertical;
+  const fy=r.RA+r.RB+r.totalAppliedVertical;
   const pass=Math.abs(fy)<1e-7 && Math.abs(momentAt(d.totalL,d,r))<1e-7;
   $("equilibriumStatus").className="status "+(pass?"success":"warning");
   $("equilibriumStatus").innerHTML=pass?"✓ Equilibrium/end-condition checks passed for the supported beam model.":`Review checks: ΣFy residual = ${fy.toExponential(3)}, M(end) = ${momentAt(d.totalL,d,r).toExponential(3)}.`;
