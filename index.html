@@ -62,7 +62,6 @@ footer{text-align:center;padding:25px;color:#667085;font-size:13px}
         <select id="analysisType" onchange="updateSystemInputs()">
           <option value="beam">Single Beam / Member</option>
           <option value="frame">Planar Rigid Frame / General System</option>
-          <option value="truss">Planar Truss</option>
         </select>
       </div>
       <div>
@@ -407,10 +406,6 @@ function determinacy(d){
     return {R,m,j,Nd,formula:"N_d = R + 3m − 3j",note:d.intermediateSupports.length?"Each intermediate support is counted according to its selected reaction type. Positive N_d indicates the beam is statically indeterminate; stiffness/compatibility analysis is needed to solve reactions.":"For the single planar beam/member model used by this tool."};
   }
   const R=Number($("reactionCount").value),m=Number($("memberCount").value),j=Number($("jointCount").value);
-  if(d.type==="truss"){
-    const Nd=R+m-2*j;
-    return {R,m,j,Nd,formula:"N_d = R + m − 2j",note:"Planar truss count."};
-  }
   const Nd=R+3*m-3*j;
   return {R,m,j,Nd,formula:"N_d = R + 3m − 3j",note:"Planar rigid-frame/member count."};
 }
